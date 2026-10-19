@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DesktopPet}",
+            "name": "Debug DesktopPet",
+            "target": "DesktopPet",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug DesktopPet"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DesktopPet}",
+            "name": "Release DesktopPet",
+            "target": "DesktopPet",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release DesktopPet"
+        }
+    ]
+}

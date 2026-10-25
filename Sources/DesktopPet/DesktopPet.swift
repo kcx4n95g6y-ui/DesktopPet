@@ -17,67 +17,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 建立一個 macOS 原生視窗
         let window = NSWindow(
             contentRect: NSRect(
-                x: 200,
-                y: 200,
-                width: 500,
-                height: 350
+                x: 0,
+                y: 0,
+                width: 260,
+                height: 320
             ),
-
             // 設定視窗標題列與控制按鈕
             styleMask: [.borderless],
-
             // 使用緩衝區繪製
             backing: .buffered,
-
             // 不延遲建立視窗
             defer: false
         )
 
         window.isOpaque = false
-
         window.backgroundColor = .clear
 
         window.hasShadow = false
-
         window.level = .floating
 
         window.ignoresMouseEvents = true
 
-        let contentView  = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 260))
+        let contentView  = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 320))
 
         contentView.wantsLayer = true
-
         contentView.layer?.backgroundColor = NSColor.clear.cgColor
 
-        let label = NSTextField(labelWithString: "Desktop Pet")
+        let imageView = NSImageView(frame: contentView.bounds)
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.imageAlignment = .alignCenter
+        imageView.imageFrameStyle = .none
+        imageView.autoresizingMask = [.width, .height]
 
-        label.frame = NSRect(x: 40, y: 100, width: 220, height: 55)
-
-        label.alignment = .center
-
-        label.font = .systemFont(ofSize: 20, weight: .semibold)
-
-        label.textColor = .white
-
-        label.wantsLayer = true
-
-        label.layer?.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.8).cgColor
-
-        label.layer?.cornerRadius = 12
-
-        label.layer?.masksToBounds = true
-
-        contentView.addSubview(label)
-        
+        if let imageURL = Bundle.module.url(
+            forResource: "pet",
+            withExtension: "png"
+        ),
+        let image = NSImage(contentsOf: imageURL){
+                imageView.image = image
+        }else{
+            imageView.image = NSImage(systemSymbolName: "cat.fill", accessibilityDescription: "Desktop Pet")
+            imageView.contentTintColor = .systemPink
+            print("找不到 pet.png，使用備用圖示")
+        }
+        contentView.addSubview(imageView)
         window.contentView = contentView
 
         if let screen = NSScreen.main{
             let area = screen.visibleFrame
-            let x = area.maxX - 300 - 24
+            let x = area.maxX - window.frame.width - 24
             let y = area.minY + 24
 
             window.setFrameOrigin(NSPoint(x: x, y: y))
         }
+        
         window.orderFrontRegardless()
 
         // 保存視窗參照

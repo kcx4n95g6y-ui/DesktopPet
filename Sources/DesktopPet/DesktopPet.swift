@@ -1,19 +1,101 @@
 
 import AppKit
+import QuartzCore
 
 // MARK: - Draggable Image View
 
 // 自訂 NSImageView，讓角色圖片可以拖曳整個視窗
+
+
 @MainActor
 final class DraggablePetImageView: NSImageView {
 
-    // 使用者按下滑鼠左鍵時，AppKit 會呼叫此方法
+    // 儲存角色被點擊時，要執行的函式
+    var onTap: (() -> Void)?
+
+    // 記錄按下滑鼠時的螢幕座標
+    private var mouseDownPoint: NSPoint?
+
+    // 記錄按下滑鼠時，視窗的原始位置
+    private var originalWindowOrigin: NSPoint?
+
+    // 記錄這次操作是否已經進入拖曳模式
+    private var didDrag = false
+
+    // 即使 App 不是目前的前景 App，也接受第一次點擊
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        return true
+    }
+
+    // 使用者按下滑鼠左鍵時觸發
     override func mouseDown(with event: NSEvent) {
 
-        // 將滑鼠按下事件交給視窗，開始拖曳視窗
-        window?.performDrag(with: event)
+        // 取得滑鼠在整個螢幕上的座標
+        mouseDownPoint = NSEvent.mouseLocation
+
+        // 記錄視窗目前的位置
+        originalWindowOrigin = window?.frame.origin
+
+        // 每次按下滑鼠，都重新開始判斷
+        didDrag = false
+    }
+
+    // 使用者按住左鍵並移動滑鼠時觸發
+    override func mouseDragged(with event: NSEvent) {
+
+        // 確認滑鼠起點、視窗起點及視窗物件存在
+        guard let start = mouseDownPoint,
+              let origin = originalWindowOrigin,
+              let window = window else {
+            return
+        }
+
+        // 取得目前的滑鼠螢幕座標
+        let current = NSEvent.mouseLocation
+
+        // 計算水平移動量
+        let dx = current.x - start.x
+
+        // 計算垂直移動量
+        let dy = current.y - start.y
+
+        // 距離平方大於 25，代表移動超過 5 points
+        if dx * dx + dy * dy > 25 {
+            didDrag = true
+        }
+
+        // 尚未達到拖曳門檻，不移動視窗
+        if !didDrag {
+            return
+        }
+
+        // 使用原始視窗位置加上滑鼠位移
+        let newPosition = NSPoint(
+            x: origin.x + dx,
+            y: origin.y + dy
+        )
+
+        // 移動整個桌面寵物視窗
+        window.setFrameOrigin(newPosition)
+    }
+
+    // 使用者放開滑鼠左鍵時觸發
+    override func mouseUp(with event: NSEvent) {
+
+        // 有按下滑鼠，而且沒有進入拖曳模式
+        if mouseDownPoint != nil && !didDrag {
+
+            // 通知外部：角色被單擊了
+            onTap?()
+        }
+
+        // 清除這次滑鼠操作的紀錄
+        mouseDownPoint = nil
+        originalWindowOrigin = nil
+        didDrag = false
     }
 }
+
 
 
 // MARK: - App Delegate
@@ -27,6 +109,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // 儲存選單列圖示
     private var statusItem: NSStatusItem?
+
+
+    // 保存角色圖片 View，供之後播放動畫
+    private var petImageView: DraggablePetImageView?
+
+    // 保存角色對話氣泡
+    private var reactionLabel: NSTextField?
+
+    // 記錄已經點擊角色的次數
+    private var reactionIndex = 0
+
 
     // 儲存需要更新狀態的選單項目
     private var normalItem: NSMenuItem?
@@ -153,11 +246,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             imageView.contentTintColor = .systemPink
         }
 
-        // 將圖片加入內容區域
+
+        // 啟用圖片的 Core Animation 圖層
+        imageView.wantsLayer = true
+
+        
+        // 指定角色被點擊時執行的閉包
+        imageView.onTap = { [weak self] in
+
+            // 確認 AppDelegate 物件仍然存在
+            guard let strongSelf = self else {
+                return
+            }
+
+            // 呼叫角色互動函式
+            strongSelf.showPetReaction()
+        }
+
+
+        // 保存圖片 View，供動畫函式使用
+        self.petImageView = imageView
+
+        // 將角色圖片加入視窗
         contentView.addSubview(imageView)
 
-        // 將內容區域放入視窗
+        // 建立一個初始為空的文字標籤
+        let bubble = NSTextField(labelWithString: "")
+
+        // 設定氣泡位置，放在視窗頂部
+        bubble.frame = NSRect(
+            x: 0,
+            y: height - 55,
+            width: width,
+            height: 40
+        )
+
+        // 設定文字置中
+        bubble.alignment = .center
+
+        // 設定文字字體
+        bubble.font = .systemFont(
+            ofSize: 17,
+            weight: .semibold
+        )
+
+        // 文字使用 macOS 系統標準顏色
+        bubble.textColor = .labelColor
+
+        // 讓氣泡跟著視窗寬度變化，保持靠近頂端
+        bubble.autoresizingMask = [.width, .minYMargin]
+
+        // 啟用氣泡的 Core Animation 圖層
+        bubble.wantsLayer = true
+
+        // 設定半透明背景
+        bubble.layer?.backgroundColor =
+            NSColor.windowBackgroundColor
+            .withAlphaComponent(0.9)
+            .cgColor
+
+        // 設定氣泡圓角
+        bubble.layer?.cornerRadius = 12
+
+        // 一開始先隱藏氣泡
+        bubble.isHidden = true
+
+        // 將氣泡加入視窗，顯示在圖片上方
+        contentView.addSubview(bubble)
+
+        // 保存氣泡物件
+        self.reactionLabel = bubble
+
+        // 將整個內容區域設定給視窗
         window.contentView = contentView
+
 
         // 還原上次儲存的位置
         restorePetPosition(window)
@@ -170,6 +332,92 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         // 顯示視窗
         window.orderFrontRegardless()
+    }
+
+    // MARK: - Pet Interaction
+
+    // 當使用者點擊角色時，觸發對話與動畫
+    private func showPetReaction() {
+
+        // 角色可以顯示的對話文字
+        let reactions = [
+            "摸摸～",
+            "嗯？",
+            "今天也加油！",
+            "♡",
+            "休息一下吧！"
+        ]
+
+        // 根據點擊次數，選擇目前要顯示的對話
+        let index = reactionIndex % reactions.count
+
+        // 取得選中的對話文字
+        let message = reactions[index]
+
+        // 將文字設定給氣泡
+        reactionLabel?.stringValue = message
+
+        // 顯示氣泡
+        reactionLabel?.isHidden = false
+
+        // 增加點擊次數
+        reactionIndex += 1
+
+        // 建立一個垂直位移的 Core Animation 動畫
+        let animation = CABasicAnimation(
+            keyPath: "transform.translation.y"
+        )
+
+        // 動畫起點：原本位置
+        animation.fromValue = 0
+
+        // 動畫終點：向上移動 9 points
+        animation.toValue = 9
+
+        // 動畫單程時間：0.16 秒
+        animation.duration = 0.16
+
+        // 到達終點後反向播放，回到原本位置
+        animation.autoreverses = true
+
+        // 動畫執行一次
+        animation.repeatCount = 1
+
+        // 設定平滑的動畫速度變化
+        animation.timingFunction = CAMediaTimingFunction(
+            name: .easeInEaseOut
+        )
+
+        // 將動畫加到角色圖片的圖層
+        petImageView?.layer?.add(
+            animation,
+            forKey: "petBounce"
+        )
+
+        // 記住這一次點擊的編號
+        let currentReaction = reactionIndex
+
+        // 建立非同步工作，延遲隱藏氣泡
+        Task { @MainActor [weak self] in
+
+            // 等待約 2 秒，不阻塞 UI
+            try? await Task.sleep(
+                nanoseconds: 2_000_000_000
+            )
+
+            // 確認 AppDelegate 仍然存在
+            guard let self = self else {
+                return
+            }
+
+            // 如果期間又點擊了角色，就不隱藏新氣泡
+            guard self.reactionIndex == currentReaction else {
+                return
+            }
+
+            // 時間到，隱藏對話氣泡
+            self.reactionLabel?.isHidden = true
+        }
     }
 
 
